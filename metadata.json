@@ -1,0 +1,8 @@
+{
+  "name": "Leedo Staff KPI Management System",
+  "description": "Official KPI tracking, monthly appraisal, and workforce performance evaluation system for LEEDO.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
