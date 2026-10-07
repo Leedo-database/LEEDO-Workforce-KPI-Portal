@@ -225,23 +225,14 @@ export const KpiProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return {};
   });
 
-  // 4. Logged-in session: Require explicit login; do NOT default to Kanta
+  // 4. Logged-in session: Always require explicit login on startup - no ID pre-logged in
   const [currentUser, setCurrentUser] = useState<Employee | null>(() => {
     try {
-      // Clear legacy hardcoded localStorage auto-login if present
-      const localSaved = localStorage.getItem(STORAGE_KEY_SESSION);
-      if (localSaved === '1002') {
-        localStorage.removeItem(STORAGE_KEY_SESSION);
-      }
-      const saved = sessionStorage.getItem(STORAGE_KEY_SESSION) || localStorage.getItem(STORAGE_KEY_SESSION);
-      if (saved) {
-        const found = employees.find((e) => e.eid === saved) || getStaticEmployeeByEid(saved);
-        if (found) return found;
-      }
+      localStorage.removeItem(STORAGE_KEY_SESSION);
+      sessionStorage.removeItem(STORAGE_KEY_SESSION);
     } catch (e) {
       console.error(e);
     }
-    // Default to null: must display LoginScreen with username and password
     return null;
   });
 
@@ -320,8 +311,9 @@ export const KpiProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   useEffect(() => {
     if (currentUser) {
-      localStorage.setItem(STORAGE_KEY_SESSION, currentUser.eid);
+      sessionStorage.setItem(STORAGE_KEY_SESSION, currentUser.eid);
     } else {
+      sessionStorage.removeItem(STORAGE_KEY_SESSION);
       localStorage.removeItem(STORAGE_KEY_SESSION);
     }
   }, [currentUser]);
@@ -1514,20 +1506,34 @@ export const KpiProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     eid: string,
     password: string
   ): { success: boolean; message: string; mustChangePassword?: boolean } => {
-    const emp = getEmployee(eid);
+    const cleanEid = eid.trim();
+    const cleanPassword = password.trim();
+
+    const emp = getEmployee(cleanEid);
     if (!emp) {
-      return { success: false, message: `এমপ্লয়ী আইডি "${eid}" পাওয়া যায়নি।` };
+      return { success: false, message: `এমপ্লয়ী আইডি "${cleanEid}" পাওয়া যায়নি। অনুগ্রহ করে সঠিক EID লিখুন।` };
     }
 
-    const cred = userCredentials[eid];
-    const defaultPassword = `leedo@${eid}`;
+    const cred = userCredentials[cleanEid];
+    // Default initial password for all employees is their EID
+    const defaultPassword = cleanEid;
     const expectedPassword = cred ? cred.passwordHash : defaultPassword;
 
-    if (password !== expectedPassword && password !== `leedo@${eid}`) {
+    const isMatch =
+      cleanPassword === expectedPassword ||
+      cleanPassword === defaultPassword ||
+      (cred && cleanPassword === cred.passwordHash);
+
+    if (!isMatch) {
       return { success: false, message: 'ভুল পাসওয়ার্ড! সঠিক পাসওয়ার্ড লিখুন।' };
     }
 
-    const needsPassChange = cred ? cred.mustChangePassword : true;
+    // Force password change on first login or if still using the default EID password
+    const needsPassChange =
+      !cred ||
+      cred.mustChangePassword ||
+      cred.passwordHash === cleanEid ||
+      cleanPassword === cleanEid;
 
     setCurrentUser(emp);
     setMustChangePassword(needsPassChange);
@@ -1553,15 +1559,20 @@ export const KpiProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     eid: string,
     newPassword: string
   ): { success: boolean; message: string } => {
-    if (newPassword.length < 6) {
-      return { success: false, message: 'পাসওয়ার্ড অবশ্যই কমপক্ষে ৬ অক্ষরের হতে হবে।' };
+    const cleanPass = newPassword.trim();
+    if (cleanPass.length < 4) {
+      return { success: false, message: 'পাসওয়ার্ড অবশ্যই কমপক্ষে ৪ অক্ষরের হতে হবে।' };
+    }
+
+    if (cleanPass === eid.trim()) {
+      return { success: false, message: 'নতুন পাসওয়ার্ড আপনার EID থেকে ভিন্ন ও গোপনীয় হতে হবে।' };
     }
 
     setUserCredentials((prev) => ({
       ...prev,
       [eid]: {
         eid,
-        passwordHash: newPassword,
+        passwordHash: cleanPass,
         mustChangePassword: false,
         lastPasswordChangedAt: new Date().toISOString(),
       },
@@ -1581,7 +1592,7 @@ export const KpiProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const emp = getEmployee(targetEid);
     if (!emp) return { success: false, message: 'কর্মী খুঁজে পাওয়া যায়নি।' };
 
-    const resetPass = newPassword && newPassword.trim() ? newPassword.trim() : `leedo@${targetEid}`;
+    const resetPass = newPassword && newPassword.trim() ? newPassword.trim() : targetEid;
 
     setUserCredentials((prev) => ({
       ...prev,
@@ -1602,7 +1613,7 @@ export const KpiProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     return {
       success: true,
-      message: `${emp.name} (EID: ${emp.eid})-এর পাসওয়ার্ড সফলভাবে রিসেট করা হয়েছে। নতুন পাসওয়ার্ড: ${resetPass}`,
+      message: `${emp.name} (EID: ${emp.eid})-এর পাসওয়ার্ড সফলভাবে রিসেট করা হয়েছে। (ডিফল্ট পাসওয়ার্ড: ${resetPass})`,
     };
   };
 

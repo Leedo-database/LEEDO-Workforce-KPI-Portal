@@ -54,8 +54,8 @@ const translations: Record<string, { en: string; bn: string }> = {
     bn: 'যাচাই করা হচ্ছে...',
   },
   defaultPasswordNotice: {
-    en: 'First time signing in? Your default password is: leedo@<Your-EID> (e.g., leedo@1002 or 123456). You can set a personal password immediately.',
-    bn: 'প্রথমবার লগইন করছেন? আপনার প্রাথমিক পাসওয়ার্ড: leedo@<আপনার-EID> (যেমন: leedo@1002 বা 123456)। প্রবেশের পর নিজের পছন্দমতো পাসওয়ার্ড পরিবর্তন করতে পারবেন।',
+    en: 'Your initial default password is your Employee ID (EID). You will be required to change your password upon first login.',
+    bn: 'প্রাথমিক পাসওয়ার্ড হিসেবে আপনার EID ব্যবহার করুন। প্রথমবার প্রবেশের পরই নিজস্ব নতুন পাসওয়ার্ড সেট করতে হবে।',
   },
   quickLoginHint: {
     en: 'Quick Demo Access by Role:',
@@ -74,8 +74,8 @@ const translations: Record<string, { en: string; bn: string }> = {
     bn: 'প্রথম লগইন: আপনার পাসওয়ার্ড সুরক্ষিত করুন',
   },
   firstLoginPasswordDesc: {
-    en: 'For security reasons, please set a new personal password for your Employee ID account.',
-    bn: 'নিরাপত্তার স্বার্থে আপনার একাউন্টের জন্য একটি নতুন নিজস্ব পাসওয়ার্ড সেট করুন।',
+    en: 'For security, please change your initial default password (EID) and set a new confidential personal password to proceed.',
+    bn: 'নিরাপত্তার স্বার্থে আপনার প্রাথমিক পাসওয়ার্ড (EID) পরিবর্তন করে একটি নতুন গোপনীয় পাসওয়ার্ড সেট করে এগিয়ে যান।',
   },
   newPassword: {
     en: 'New Password',

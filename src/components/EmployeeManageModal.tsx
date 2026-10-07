@@ -371,7 +371,7 @@ export const EmployeeManageModal: React.FC<Props> = ({ onClose }) => {
                                 type="button"
                                 onClick={() => {
                                   setResetEmpTarget(emp);
-                                  setNewResetPassword(`leedo@${emp.eid}`);
+                                  setNewResetPassword(emp.eid);
                                   setResetSuccessNotice(null);
                                 }}
                                 className="px-2 py-1 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 rounded font-bold text-[10px] transition cursor-pointer flex items-center gap-1 shadow-2xs"
@@ -650,8 +650,8 @@ export const EmployeeManageModal: React.FC<Props> = ({ onClose }) => {
                   </div>
                   <p className="text-[10px] text-slate-500 mt-1">
                     {language === 'bn'
-                      ? 'ডিফল্ট: leedo@<ID>। রিসেটের পর কর্মী লগইন করলে নিজের নতুন পাসওয়ার্ড পরিবর্তনের সুযোগ পাবেন।'
-                      : 'Default: leedo@<ID>. The staff will be prompted to set their custom password on next login.'}
+                      ? 'ডিফল্ট পাসওয়ার্ড: কর্মীর EID। রিসেটের পর কর্মী লগইন করলে নিজের নতুন পাসওয়ার্ড পরিবর্তনের সুযোগ পাবেন।'
+                      : 'Default: Employee EID. The staff will be prompted to set their custom password on next login.'}
                   </p>
                 </div>
 
