@@ -12,14 +12,17 @@ import {
   Trash2,
   Plus,
   Menu,
+  Image as ImageIcon,
 } from 'lucide-react';
 
 interface HeaderProps {
   onOpenMobileSidebar?: () => void;
+  onOpenLogoEditorModal?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
   onOpenMobileSidebar,
+  onOpenLogoEditorModal,
 }) => {
   const {
     currentUser,
@@ -105,6 +108,19 @@ export const Header: React.FC<HeaderProps> = ({
                 </button>
               )}
               <LeedoLogo size="md" showSubtitle={true} bilingualSubtitle={true} />
+
+              {/* HR Logo Edit Button */}
+              {isHrOrExec && onOpenLogoEditorModal && (
+                <button
+                  type="button"
+                  onClick={onOpenLogoEditorModal}
+                  className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-[11px] font-bold transition cursor-pointer shadow-2xs shrink-0"
+                  title={language === 'bn' ? 'সংস্থার লোগো পরিবর্তন করুন (HR Edit Logo)' : 'Edit Organization Logo (HR)'}
+                >
+                  <ImageIcon className="w-3.5 h-3.5 text-rose-600" />
+                  <span>{language === 'bn' ? 'লোগো এডিট' : 'Edit Logo'}</span>
+                </button>
+              )}
             </div>
 
             {/* Middle: Live Active Month, Today's Date & Real-Time Clock */}
@@ -182,19 +198,6 @@ export const Header: React.FC<HeaderProps> = ({
                 <Clock className="w-3 h-3 text-emerald-600" />
                 <span>{formattedTime}</span>
               </div>
-
-              {/* Clear Demo Data Button (Exclusively for Murshida Akhter Kanta / HR Admin) */}
-              {isKantaOrHr && (
-                <button
-                  type="button"
-                  onClick={() => setShowClearDemoModal(true)}
-                  className="hidden sm:flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold transition cursor-pointer shadow-2xs"
-                  title="Wipe demo test progress and reset for live production"
-                >
-                  <Trash2 className="w-3.5 h-3.5 text-rose-600" />
-                  <span>{language === 'bn' ? 'ডেমো রিসেট' : 'Clear Demo'}</span>
-                </button>
-              )}
 
               {/* Language Switcher Toggle */}
               <div className="flex items-center bg-slate-100 p-0.5 rounded-lg border border-slate-200 text-xs">

@@ -17,6 +17,7 @@ import { PrintableReportModal } from './components/PrintableReportModal';
 import { HrEditModal } from './components/HrEditModal';
 import { OrgSummaryReportModal } from './components/OrgSummaryReportModal';
 import { EmployeeManageModal } from './components/EmployeeManageModal';
+import { LogoEditorModal } from './components/LogoEditorModal';
 import { MyJdModal } from './components/MyJdModal';
 import { Sidebar } from './components/Sidebar';
 import { Employee } from './types/kpi';
@@ -31,6 +32,7 @@ function AppContent() {
   const [hrEditModalEid, setHrEditModalEid] = useState<string | null>(null);
   const [showOrgSummaryModal, setShowOrgSummaryModal] = useState<boolean>(false);
   const [showEmployeeManageModal, setShowEmployeeManageModal] = useState<boolean>(false);
+  const [showLogoEditorModal, setShowLogoEditorModal] = useState<boolean>(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState<boolean>(false);
 
   // If not logged in, render the secure LoginScreen
@@ -52,6 +54,7 @@ function AppContent() {
         onOpenJdModal={(emp) => setJdModalEmployee(emp || currentUser)}
         onOpenOrgSummaryModal={() => setShowOrgSummaryModal(true)}
         onOpenEmployeeManageModal={() => setShowEmployeeManageModal(true)}
+        onOpenLogoEditorModal={() => setShowLogoEditorModal(true)}
         isMobileOpen={isMobileSidebarOpen}
         onCloseMobile={() => setIsMobileSidebarOpen(false)}
       />
@@ -61,6 +64,7 @@ function AppContent() {
         {/* Global Top Bar: Authentic LEEDO Logo, Live Running Month, Today's Date & Real-Time Clock */}
         <Header
           onOpenMobileSidebar={() => setIsMobileSidebarOpen(true)}
+          onOpenLogoEditorModal={() => setShowLogoEditorModal(true)}
         />
 
         {/* Main Content Area */}
@@ -78,6 +82,7 @@ function AppContent() {
               onOpenHrEditModal={(eid) => setHrEditModalEid(eid)}
               onOpenOrgSummaryModal={() => setShowOrgSummaryModal(true)}
               onOpenEmployeeManageModal={() => setShowEmployeeManageModal(true)}
+              onOpenLogoEditorModal={() => setShowLogoEditorModal(true)}
             />
           )}
 
@@ -134,6 +139,14 @@ function AppContent() {
         {/* Employee Management Modal (Add new staff / Exited staff) */}
         {showEmployeeManageModal && (
           <EmployeeManageModal onClose={() => setShowEmployeeManageModal(false)} />
+        )}
+
+        {/* Organization Logo & Branding Editor Modal (For HR & Executives) */}
+        {showLogoEditorModal && isHrOrExec && (
+          <LogoEditorModal
+            isOpen={showLogoEditorModal}
+            onClose={() => setShowLogoEditorModal(false)}
+          />
         )}
 
         {/* Official Clean Footer */}

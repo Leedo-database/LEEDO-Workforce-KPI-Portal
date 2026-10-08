@@ -22,6 +22,7 @@ import {
   BarChart3,
   UserPlus,
   Paperclip,
+  Image as ImageIcon,
 } from 'lucide-react';
 
 interface HrDashboardProps {
@@ -29,6 +30,7 @@ interface HrDashboardProps {
   onOpenHrEditModal: (eid: string) => void;
   onOpenOrgSummaryModal?: () => void;
   onOpenEmployeeManageModal?: () => void;
+  onOpenLogoEditorModal?: () => void;
 }
 
 export const HrDashboard: React.FC<HrDashboardProps> = ({
@@ -36,6 +38,7 @@ export const HrDashboard: React.FC<HrDashboardProps> = ({
   onOpenHrEditModal,
   onOpenOrgSummaryModal,
   onOpenEmployeeManageModal,
+  onOpenLogoEditorModal,
 }) => {
   const {
     employees,
@@ -267,6 +270,18 @@ export const HrDashboard: React.FC<HrDashboardProps> = ({
               >
                 <UserPlus className="w-4 h-4 text-rose-400" />
                 <span>কর্মী ব্যবস্থাপনা (নতুন/অব্যাহতি)</span>
+              </button>
+            )}
+
+            {/* Logo & Branding Edit Button */}
+            {onOpenLogoEditorModal && (
+              <button
+                onClick={onOpenLogoEditorModal}
+                className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
+                title="Change Organization Logo & Branding"
+              >
+                <ImageIcon className="w-4 h-4 text-pink-400" />
+                <span>লোগো পরিবর্তন</span>
               </button>
             )}
 

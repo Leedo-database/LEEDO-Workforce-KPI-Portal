@@ -158,7 +158,20 @@ export type AuditAction =
   | 'JD_UPLOADED'
   | 'MAIN_KPI_ADDED'
   | 'KPI_MODIFIED'
-  | 'KPI_DELETED';
+  | 'KPI_DELETED'
+  | 'LOGO_UPDATED';
+
+export interface OrgLogoConfig {
+  type: 'default' | 'custom_image';
+  customImageUrl?: string; // Data URL (base64) or Image URL
+  orgNameEn?: string; // e.g. "LEEDO"
+  orgNameBn?: string; // e.g. "লিডো"
+  orgSubtitleEn?: string; // e.g. "Local Education & Economic Development Org."
+  orgSubtitleBn?: string; // e.g. "স্থানীয় শিক্ষা ও অর্থনৈতিক উন্নয়ন সংস্থা • ঢাকা, বাংলাদেশ"
+  updatedAt?: string;
+  updatedByEid?: string;
+  updatedByName?: string;
+}
 
 export interface UserCredential {
   eid: string;
@@ -187,4 +200,5 @@ export interface SystemConfig {
   activeMonthCode: string; // "2026-09"
   overrideTargetWindowOpen: boolean; // Manual override from HR
   automatedRemindersActive: boolean;
+  logoConfig?: OrgLogoConfig;
 }

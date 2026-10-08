@@ -12,6 +12,7 @@ import {
   EmployeeJD,
   ReportPeriod,
   AggregatedPeriodPerformance,
+  OrgLogoConfig,
 } from '../types/kpi';
 import { EMPLOYEES, getEmployeeByEid as getStaticEmployeeByEid } from '../data/employees';
 import { generateInitialKPIs, INITIAL_AUDIT_LOGS } from '../data/initialKpis';
@@ -63,6 +64,8 @@ export interface KpiContextType {
   dismissAutoRolloverNotice: () => void;
 
   updateSystemConfig: (updates: Partial<SystemConfig>) => void;
+  updateOrgLogo: (newLogoConfig: Partial<OrgLogoConfig>) => { success: boolean; message: string };
+  resetOrgLogoToDefault: () => { success: boolean; message: string };
   isTargetWindowOpenForUser: (eid: string) => boolean;
   getUserKPI: (eid: string, monthCode?: string) => MonthlyEmployeeKPI | undefined;
 
@@ -160,6 +163,13 @@ const DEFAULT_CONFIG: SystemConfig = {
   activeMonthCode: '2026-09',
   overrideTargetWindowOpen: true,
   automatedRemindersActive: true,
+  logoConfig: {
+    type: 'default',
+    orgNameEn: 'LEEDO',
+    orgNameBn: 'লিডো',
+    orgSubtitleEn: 'Local Education & Economic Development Org.',
+    orgSubtitleBn: 'স্থানীয় শিক্ষা ও অর্থনৈতিক উন্নয়ন সংস্থা • ঢাকা, বাংলাদেশ',
+  },
 };
 
 const DEFAULT_MONTHS = [
@@ -1517,23 +1527,23 @@ export const KpiProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const cred = userCredentials[cleanEid];
     // Default initial password for all employees is their EID
     const defaultPassword = cleanEid;
-    const expectedPassword = cred ? cred.passwordHash : defaultPassword;
+    const hasCustomPassword = !!(cred && cred.passwordHash && cred.passwordHash !== defaultPassword);
+    const expectedPassword = hasCustomPassword ? cred.passwordHash : defaultPassword;
 
-    const isMatch =
-      cleanPassword === expectedPassword ||
-      cleanPassword === defaultPassword ||
-      (cred && cleanPassword === cred.passwordHash);
-
-    if (!isMatch) {
-      return { success: false, message: 'ভুল পাসওয়ার্ড! সঠিক পাসওয়ার্ড লিখুন।' };
+    if (cleanPassword !== expectedPassword) {
+      return {
+        success: false,
+        message: hasCustomPassword
+          ? 'ভুল পাসওয়ার্ড! আপনার পরিবর্তিত নতুন পাসওয়ার্ড লিখুন।'
+          : 'ভুল পাসওয়ার্ড! প্রাথমিক পাসওয়ার্ড হিসেবে আপনার EID লিখুন।',
+      };
     }
 
     // Force password change on first login or if still using the default EID password
     const needsPassChange =
-      !cred ||
-      cred.mustChangePassword ||
-      cred.passwordHash === cleanEid ||
-      cleanPassword === cleanEid;
+      !hasCustomPassword ||
+      cleanPassword === defaultPassword ||
+      Boolean(cred && cred.mustChangePassword);
 
     setCurrentUser(emp);
     setMustChangePassword(needsPassChange);
@@ -1582,6 +1592,43 @@ export const KpiProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     addAuditLog('PASSWORD_CHANGED', `পাসওয়ার্ড সফলভাবে পরিবর্তন করা হয়েছে।`, eid);
 
     return { success: true, message: 'পাসওয়ার্ড সফলভাবে পরিবর্তিত হয়েছে।' };
+  };
+
+  // Organization Logo & Branding Management (For HR/Exec)
+  const updateOrgLogo = (newLogoConfig: Partial<OrgLogoConfig>): { success: boolean; message: string } => {
+    const updated: OrgLogoConfig = {
+      ...(systemConfig.logoConfig || DEFAULT_CONFIG.logoConfig!),
+      ...newLogoConfig,
+      updatedAt: new Date().toISOString(),
+      updatedByEid: currentUser?.eid || 'HR',
+      updatedByName: currentUser?.name || 'HR Admin',
+    };
+
+    setSystemConfig((prev) => ({
+      ...prev,
+      logoConfig: updated,
+    }));
+
+    addAuditLog(
+      'LOGO_UPDATED',
+      `সংস্থার অফিসিয়াল লোগো ও ব্র্যান্ডিং আপডেট করা হয়েছে (${newLogoConfig.type || 'Custom Logo'})`
+    );
+
+    return { success: true, message: 'সংস্থার লোগো সফলভাবে পরিবর্তিত হয়েছে।' };
+  };
+
+  const resetOrgLogoToDefault = (): { success: boolean; message: string } => {
+    setSystemConfig((prev) => ({
+      ...prev,
+      logoConfig: DEFAULT_CONFIG.logoConfig,
+    }));
+
+    addAuditLog(
+      'LOGO_UPDATED',
+      'সংস্থার লোগো ডিফল্ট লিডো লোগোতে পুনর্বহাল করা হয়েছে'
+    );
+
+    return { success: true, message: 'সংস্থার লোগো ডিফল্ট অবস্থায় সফলভাবে পুনর্বহাল করা হয়েছে।' };
   };
 
   // HR / Admin Password Reset for any employee
@@ -1733,6 +1780,8 @@ export const KpiProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         autoRolledOverNotice,
         dismissAutoRolloverNotice,
         updateSystemConfig,
+        updateOrgLogo,
+        resetOrgLogoToDefault,
         isTargetWindowOpenForUser,
         getUserKPI,
         commitMonthlyTargets,

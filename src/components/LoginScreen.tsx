@@ -90,11 +90,11 @@ export const LoginScreen: React.FC = () => {
           <div className="border-b border-slate-100 pb-4 mb-5">
             <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
               <KeyRound className="w-4 h-4 text-rose-600" />
-              {t('loginTitle')}
+              {language === 'bn' ? 'স্টাফ পোর্টাল লগইন' : 'Staff Portal Sign In'}
             </h3>
             <p className="text-xs text-slate-500 mt-1">
               {language === 'bn'
-                ? 'পোর্টালে প্রবেশ করতে আপনার এমপ্লয়ী আইডি (EID) এবং পাসওয়ার্ড লিখুন।'
+                ? 'পোর্টালে প্রবেশ করতে আপনার এমপ্লয়ী আইডি (EID) ও পাসওয়ার্ড লিখুন।'
                 : 'Enter your Employee ID (EID) and password to access the portal.'}
             </p>
           </div>
@@ -120,7 +120,7 @@ export const LoginScreen: React.FC = () => {
                   required
                   value={eid}
                   onChange={(e) => setEid(e.target.value)}
-                  placeholder={language === 'bn' ? 'আপনার EID (যেমন: 1002)' : 'Enter your EID'}
+                  placeholder={language === 'bn' ? 'আপনার EID (যেমন: 1001, 1002)' : 'Enter your EID'}
                   className="block w-full pl-9 pr-3 py-2.5 border border-slate-300 rounded-xl text-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-rose-500 focus:border-rose-500 font-mono"
                 />
               </div>
@@ -139,7 +139,7 @@ export const LoginScreen: React.FC = () => {
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder={language === 'bn' ? 'আপনার পাসওয়ার্ড' : 'Enter your password'}
+                  placeholder={language === 'bn' ? 'পাসওয়ার্ড (প্রাথমিক পাসওয়ার্ড EID)' : 'Password (Default is EID)'}
                   className="block w-full pl-9 pr-3 py-2.5 border border-slate-300 rounded-xl text-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-rose-500 focus:border-rose-500"
                 />
               </div>
