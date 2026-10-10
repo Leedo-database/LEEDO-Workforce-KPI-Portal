@@ -44,6 +44,7 @@ export const OrgSummaryReportModal: React.FC<Props> = ({
   const [selectedDept, setSelectedDept] = useState<string>('All');
   const [selectedClassification, setSelectedClassification] = useState<string>('All');
   const [searchTerm, setSearchTerm] = useState('');
+  const [printOrientation, setPrintOrientation] = useState<'landscape' | 'portrait'>('landscape');
 
   const reportRef = useRef<HTMLDivElement>(null);
 
@@ -132,7 +133,17 @@ export const OrgSummaryReportModal: React.FC<Props> = ({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-950/80 backdrop-blur-xs overflow-y-auto print:static print:inset-auto print:p-0 print:m-0 print:bg-white print:overflow-visible print:block print:h-auto print:w-full">
+    <div className="fixed inset-0 z-50 flex items-start justify-center p-2 sm:p-4 pt-16 pb-16 bg-slate-950/80 backdrop-blur-xs overflow-y-auto print:static print:inset-auto print:p-0 print:m-0 print:bg-white print:overflow-visible print:block print:h-auto print:w-full">
+      {/* Dynamic Print Page Style */}
+      <style>{`
+        @media print {
+          @page {
+            size: ${printOrientation === 'landscape' ? 'A4 landscape' : 'A4 portrait'};
+            margin: 8mm;
+          }
+        }
+      `}</style>
+
       {/* Top Floating Control Bar (Hidden during Print) */}
       <div className="fixed top-3 inset-x-4 sm:inset-x-auto sm:right-4 z-50 flex flex-wrap items-center justify-between sm:justify-end gap-2 print:hidden bg-slate-900/95 backdrop-blur-md p-2.5 rounded-2xl shadow-2xl border border-slate-700">
         {/* Period Selector Tabs */}
@@ -150,6 +161,30 @@ export const OrgSummaryReportModal: React.FC<Props> = ({
               <span>{language === 'bn' ? periodLabelMap[p].bn : periodLabelMap[p].en}</span>
             </button>
           ))}
+        </div>
+
+        {/* Orientation Toggle for Print */}
+        <div className="flex items-center gap-1 bg-slate-800 p-1 rounded-xl text-xs">
+          <button
+            type="button"
+            onClick={() => setPrintOrientation('portrait')}
+            className={`px-2.5 py-1 rounded-lg font-bold transition cursor-pointer ${
+              printOrientation === 'portrait' ? 'bg-rose-600 text-white' : 'text-slate-300 hover:text-white'
+            }`}
+            title="Portrait View"
+          >
+            {language === 'bn' ? 'লম্বালম্বি' : 'Portrait'}
+          </button>
+          <button
+            type="button"
+            onClick={() => setPrintOrientation('landscape')}
+            className={`px-2.5 py-1 rounded-lg font-bold transition cursor-pointer ${
+              printOrientation === 'landscape' ? 'bg-rose-600 text-white' : 'text-slate-300 hover:text-white'
+            }`}
+            title="Landscape View (Recommended for wide table)"
+          >
+            {language === 'bn' ? 'আড়াআড়ি' : 'Landscape'}
+          </button>
         </div>
 
         <div className="flex items-center gap-2">
@@ -172,7 +207,7 @@ export const OrgSummaryReportModal: React.FC<Props> = ({
       {/* Main Printable Document Body */}
       <div
         ref={reportRef}
-        className="printable-document bg-white w-full max-w-5xl my-16 sm:my-10 p-6 sm:p-10 rounded-2xl shadow-2xl border border-slate-200 text-slate-900 print:shadow-none print:border-none print:m-0 print:p-0 print:w-full print:max-w-none text-xs"
+        className="printable-document bg-white w-full max-w-6xl my-8 p-6 sm:p-10 rounded-2xl shadow-2xl border border-slate-200 text-slate-900 print:shadow-none print:border-none print:m-0 print:p-0 print:w-full print:max-w-none text-xs"
         style={{ fontFamily: 'Inter, system-ui, sans-serif' }}
       >
         {/* Official Header */}

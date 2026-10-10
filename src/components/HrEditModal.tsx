@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useKpi } from '../context/KpiContext';
 import { useLanguage } from '../context/LanguageContext';
 import { StrategicPillar, KPIItem } from '../types/kpi';
@@ -42,15 +42,22 @@ export const HrEditModal: React.FC<Props> = ({ eid, onClose }) => {
     hrUpdateEmployeeKPI,
     modifyEmployeeKpiItem,
     deleteEmployeeKpiItem,
+    deleteEmployeeMonthKPI,
+    resetEmployeeKpiToDefault,
     addMainKpiItem,
     uploadEmployeeJD,
     getEmployeeJD,
+    availableMonths,
+    systemConfig,
+    kpiRecords,
     currentUser,
   } = useKpi();
   const { language } = useLanguage();
 
+  const [selectedMonth, setSelectedMonth] = useState<string>(systemConfig.activeMonthCode);
+
   const emp = getEmployee(eid);
-  const kpiRecord = getUserKPI(eid);
+  const kpiRecord = getUserKPI(eid, selectedMonth);
   const currentJD = getEmployeeJD(eid);
 
   const [activeTab, setActiveTab] = useState<'appraisal' | 'kpis' | 'jd'>('appraisal');
@@ -68,6 +75,22 @@ export const HrEditModal: React.FC<Props> = ({ eid, onClose }) => {
     kpiRecord?.hrReview?.status === 'Approved' ? 'Approved' : 'Approved'
   );
 
+  // Sync state when selectedMonth changes
+  useEffect(() => {
+    const rec = getUserKPI(eid, selectedMonth);
+    if (rec) {
+      setItems(
+        rec.items.map((i) => ({
+          taskId: i.taskId,
+          target: i.target,
+          achieved: i.achieved,
+        }))
+      );
+      setHrComments(rec.hrReview?.hrComments || '');
+      setApprovalStatus(rec.hrReview?.status === 'Approved' ? 'Approved' : 'Approved');
+    }
+  }, [selectedMonth, eid, kpiRecords]);
+
   // Tab 2 State: KPI Editor & Add Main KPI
   const [editingItem, setEditingItem] = useState<KPIItem | null>(null);
   const [isAddingMainKpi, setIsAddingMainKpi] = useState(false);
@@ -77,6 +100,10 @@ export const HrEditModal: React.FC<Props> = ({ eid, onClose }) => {
   const [newUnit, setNewUnit] = useState('টি');
   const [newWeight, setNewWeight] = useState<number>(10);
   const [newPillar, setNewPillar] = useState<StrategicPillar>('Child Rights & Street Protection');
+
+  // Delete Confirmation state
+  const [deleteConfirmItem, setDeleteConfirmItem] = useState<{ taskId: string; title: string; weight: number } | null>(null);
+  const [showMonthResetConfirm, setShowMonthResetConfirm] = useState<boolean>(false);
 
   // Tab 3 State: JD Upload
   const [jdText, setJdText] = useState(currentJD?.textContent || '');
@@ -94,7 +121,7 @@ export const HrEditModal: React.FC<Props> = ({ eid, onClose }) => {
   // Tab 1 Submit: Appraisal Update
   const handleAppraisalSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const res = hrUpdateEmployeeKPI(eid, items, hrComments, approvalStatus);
+    const res = hrUpdateEmployeeKPI(eid, items, hrComments, approvalStatus, selectedMonth);
     if (res.success) {
       setFeedback({ type: 'success', message: res.message });
       setTimeout(() => onClose(), 1200);
@@ -122,7 +149,7 @@ export const HrEditModal: React.FC<Props> = ({ eid, onClose }) => {
       unit: newUnit.trim() || 'Units',
       weight: Number(newWeight) || 10,
       strategicPillar: newPillar,
-    });
+    }, selectedMonth);
 
     if (res.success) {
       setFeedback({ type: 'success', message: res.message });
@@ -147,7 +174,7 @@ export const HrEditModal: React.FC<Props> = ({ eid, onClose }) => {
       weight: Number(editingItem.weight),
       unit: editingItem.unit,
       strategicPillar: editingItem.strategicPillar,
-    });
+    }, selectedMonth);
 
     if (res.success) {
       setFeedback({ type: 'success', message: res.message });
@@ -157,13 +184,19 @@ export const HrEditModal: React.FC<Props> = ({ eid, onClose }) => {
     }
   };
 
-  // Tab 2: Delete KPI Item
-  const handleDeleteItem = (taskId: string, title: string) => {
-    const confirm = window.confirm(`"${title}" সূচকটি মুছে ফেলতে চান? এর ওয়েট অবশিষ্ট সূচকগুলোতে স্বয়ংক্রিয়ভাবে পুনর্বণ্টন হবে।`);
-    if (confirm) {
-      const res = deleteEmployeeKpiItem(eid, taskId);
-      setFeedback({ type: res.success ? 'success' : 'error', message: res.message });
-    }
+  // Tab 2: Confirm and Delete KPI Item
+  const handleConfirmDeleteItem = () => {
+    if (!deleteConfirmItem) return;
+    const res = deleteEmployeeKpiItem(eid, deleteConfirmItem.taskId, selectedMonth);
+    setFeedback({ type: res.success ? 'success' : 'error', message: res.message });
+    setDeleteConfirmItem(null);
+  };
+
+  // Tab 2: Confirm and Reset Month KPI
+  const handleConfirmMonthReset = () => {
+    const res = resetEmployeeKpiToDefault(eid, selectedMonth);
+    setFeedback({ type: res.success ? 'success' : 'error', message: res.message });
+    setShowMonthResetConfirm(false);
   };
 
   // Tab 3: JD File Upload Handler
@@ -203,8 +236,8 @@ export const HrEditModal: React.FC<Props> = ({ eid, onClose }) => {
   const templates = getJDTemplateForDesignation(emp.designation);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/75 backdrop-blur-xs overflow-y-auto">
-      <div className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full overflow-hidden border border-slate-200 my-8 animate-in zoom-in-95 duration-150 text-xs">
+    <div className="fixed inset-0 z-50 flex items-start justify-center p-3 sm:p-4 pt-6 pb-12 bg-slate-950/75 backdrop-blur-xs overflow-y-auto">
+      <div className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full overflow-hidden border border-slate-200 my-4 animate-in zoom-in-95 duration-150 text-xs">
         {/* Header */}
         <div className="bg-gradient-to-r from-rose-700 via-rose-600 to-rose-800 px-6 py-4 text-white flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -233,55 +266,78 @@ export const HrEditModal: React.FC<Props> = ({ eid, onClose }) => {
           </button>
         </div>
 
-        {/* Tab Navigation */}
-        <div className="flex border-b border-slate-200 bg-slate-50 px-6 pt-3 gap-2">
-          <button
-            type="button"
-            onClick={() => {
-              setActiveTab('appraisal');
-              setFeedback(null);
-            }}
-            className={`px-4 py-2 font-bold text-xs rounded-t-xl transition cursor-pointer flex items-center gap-1.5 ${
-              activeTab === 'appraisal'
-                ? 'bg-white text-rose-700 border-t border-x border-slate-200 -mb-px'
-                : 'text-slate-500 hover:text-slate-800'
-            }`}
-          >
-            <CheckCircle2 className="w-4 h-4" />
-            <span>{language === 'bn' ? '১. মাসিক মূল্যায়ন ও স্কোর' : '1. Appraisal & Scoring'}</span>
-          </button>
+        {/* Tab Navigation & Month Selection */}
+        <div className="flex flex-wrap items-center justify-between border-b border-slate-200 bg-slate-50 px-6 pt-3 gap-2">
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setActiveTab('appraisal');
+                setFeedback(null);
+              }}
+              className={`px-4 py-2 font-bold text-xs rounded-t-xl transition cursor-pointer flex items-center gap-1.5 ${
+                activeTab === 'appraisal'
+                  ? 'bg-white text-rose-700 border-t border-x border-slate-200 -mb-px'
+                  : 'text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              <CheckCircle2 className="w-4 h-4" />
+              <span>{language === 'bn' ? '১. মাসিক মূল্যায়ন ও স্কোর' : '1. Appraisal & Scoring'}</span>
+            </button>
 
-          <button
-            type="button"
-            onClick={() => {
-              setActiveTab('kpis');
-              setFeedback(null);
-            }}
-            className={`px-4 py-2 font-bold text-xs rounded-t-xl transition cursor-pointer flex items-center gap-1.5 ${
-              activeTab === 'kpis'
-                ? 'bg-white text-rose-700 border-t border-x border-slate-200 -mb-px'
-                : 'text-slate-500 hover:text-slate-800'
-            }`}
-          >
-            <Sliders className="w-4 h-4" />
-            <span>{language === 'bn' ? '২. কেপিআই পরিবর্তন ও সংযোজন' : '2. Core KPI Editor'}</span>
-          </button>
+            <button
+              type="button"
+              onClick={() => {
+                setActiveTab('kpis');
+                setFeedback(null);
+              }}
+              className={`px-4 py-2 font-bold text-xs rounded-t-xl transition cursor-pointer flex items-center gap-1.5 ${
+                activeTab === 'kpis'
+                  ? 'bg-white text-rose-700 border-t border-x border-slate-200 -mb-px'
+                  : 'text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              <Sliders className="w-4 h-4" />
+              <span>{language === 'bn' ? '২. কেপিআই পরিবর্তন ও সংযোজন' : '2. Core KPI Editor'}</span>
+            </button>
 
-          <button
-            type="button"
-            onClick={() => {
-              setActiveTab('jd');
-              setFeedback(null);
-            }}
-            className={`px-4 py-2 font-bold text-xs rounded-t-xl transition cursor-pointer flex items-center gap-1.5 ${
-              activeTab === 'jd'
-                ? 'bg-white text-rose-700 border-t border-x border-slate-200 -mb-px'
-                : 'text-slate-500 hover:text-slate-800'
-            }`}
-          >
-            <BookOpen className="w-4 h-4" />
-            <span>{language === 'bn' ? '৩. জেডি আপলোড (JD Manager)' : '3. Job Description (JD)'}</span>
-          </button>
+            <button
+              type="button"
+              onClick={() => {
+                setActiveTab('jd');
+                setFeedback(null);
+              }}
+              className={`px-4 py-2 font-bold text-xs rounded-t-xl transition cursor-pointer flex items-center gap-1.5 ${
+                activeTab === 'jd'
+                  ? 'bg-white text-rose-700 border-t border-x border-slate-200 -mb-px'
+                  : 'text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              <BookOpen className="w-4 h-4" />
+              <span>{language === 'bn' ? '৩. জেডি আপলোড (JD Manager)' : '3. Job Description (JD)'}</span>
+            </button>
+          </div>
+
+          {/* Month selector for HR to view and manage present or past KPIs */}
+          <div className="flex items-center gap-2 pb-2 text-xs">
+            <span className="text-slate-500 font-bold">{language === 'bn' ? 'মূল্যায়ন মাস:' : 'Cycle:'}</span>
+            <select
+              value={selectedMonth}
+              onChange={(e) => {
+                setSelectedMonth(e.target.value);
+                setEditingItem(null);
+                setDeleteConfirmItem(null);
+                setFeedback(null);
+              }}
+              className="bg-white border border-slate-300 font-bold text-slate-800 rounded-lg px-2.5 py-1 text-xs focus:ring-2 focus:ring-rose-500 cursor-pointer shadow-2xs"
+            >
+              {availableMonths.map((m) => (
+                <option key={m.code} value={m.code}>
+                  {m.name} {m.code === systemConfig.activeMonthCode ? (language === 'bn' ? '(চলতি)' : '(Current)') : (language === 'bn' ? '(পূর্ববর্তী)' : '(Past)')}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
 
         {/* Feedback Alert */}
@@ -713,6 +769,36 @@ export const HrEditModal: React.FC<Props> = ({ eid, onClose }) => {
                 </form>
               )}
 
+              {/* Delete KPI Confirmation Prompt */}
+              {deleteConfirmItem && (
+                <div className="p-3 bg-rose-50 border border-rose-300 rounded-xl mb-3 flex flex-wrap items-center justify-between gap-2 text-xs text-rose-900 animate-in fade-in">
+                  <div className="flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                    <span>
+                      {language === 'bn'
+                        ? `"${deleteConfirmItem.title}" সূচকটি মুছে ফেলতে চান? এর ${deleteConfirmItem.weight}% ওয়েট অবশিষ্ট সূচকগুলোতে পুনর্বণ্টন হবে।`
+                        : `Delete KPI "${deleteConfirmItem.title}"? Its ${deleteConfirmItem.weight}% weight will be redistributed.`}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleConfirmDeleteItem}
+                      className="px-3 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded-lg font-bold text-xs cursor-pointer shadow-xs"
+                    >
+                      {language === 'bn' ? 'মুছে ফেলুন (নিশ্চিত)' : 'Confirm Delete'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDeleteConfirmItem(null)}
+                      className="px-2.5 py-1 bg-slate-200 hover:bg-slate-300 text-slate-800 rounded-lg text-xs cursor-pointer"
+                    >
+                      {language === 'bn' ? 'বাতিল' : 'Cancel'}
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {/* List of existing KPIs */}
               <div className="border border-slate-200 rounded-xl overflow-hidden">
                 <table className="w-full border-collapse text-left">
@@ -760,7 +846,7 @@ export const HrEditModal: React.FC<Props> = ({ eid, onClose }) => {
                             </button>
                             <button
                               type="button"
-                              onClick={() => handleDeleteItem(item.taskId, item.title)}
+                              onClick={() => setDeleteConfirmItem({ taskId: item.taskId, title: item.title, weight: item.weight })}
                               className="p-1 hover:bg-rose-100 rounded text-rose-600 hover:text-rose-800 transition cursor-pointer"
                               title="অপসারণ করুন"
                             >
@@ -772,6 +858,50 @@ export const HrEditModal: React.FC<Props> = ({ eid, onClose }) => {
                     ))}
                   </tbody>
                 </table>
+              </div>
+
+              {/* Month KPI Reset / Clear Option */}
+              <div className="mt-4 p-3 bg-slate-50 border border-slate-200 rounded-xl flex flex-wrap items-center justify-between gap-3 text-xs">
+                <div>
+                  <span className="font-bold text-slate-700 block">
+                    {language === 'bn' ? `${selectedMonth} মাসের কেপিআই নিয়ন্ত্রণ:` : `Manage ${selectedMonth} KPI Record:`}
+                  </span>
+                  <span className="text-[11px] text-slate-500">
+                    {language === 'bn'
+                      ? 'ভুল বা পূর্ববর্তী মাসের স্কোরকার্ড রিসেট করতে অথবা ডিফল্ট অবস্থায় ফিরিয়ে নিতে ব্যবহার করুন।'
+                      : 'Reset or clear this monthly scorecard back to default designation template.'}
+                  </span>
+                </div>
+
+                {!showMonthResetConfirm ? (
+                  <button
+                    type="button"
+                    onClick={() => setShowMonthResetConfirm(true)}
+                    className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl font-bold transition cursor-pointer"
+                  >
+                    {language === 'bn' ? 'ডিফল্ট জেডি সূচকে রিসেট করুন' : 'Reset to Default Template'}
+                  </button>
+                ) : (
+                  <div className="flex items-center gap-2 bg-rose-100 p-1.5 rounded-xl border border-rose-300">
+                    <span className="text-[11px] text-rose-900 font-bold px-1">
+                      {language === 'bn' ? 'আপনি কি নিশ্চিত?' : 'Are you sure?'}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={handleConfirmMonthReset}
+                      className="px-2.5 py-1 bg-rose-600 text-white rounded-lg font-bold text-xs cursor-pointer shadow-xs"
+                    >
+                      {language === 'bn' ? 'হ্যাঁ, রিসেট করুন' : 'Yes, Reset'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowMonthResetConfirm(false)}
+                      className="px-2 py-1 bg-slate-200 text-slate-700 rounded-lg text-xs cursor-pointer"
+                    >
+                      {language === 'bn' ? 'বাতিল' : 'Cancel'}
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           )}

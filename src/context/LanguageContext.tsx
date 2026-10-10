@@ -277,6 +277,30 @@ const translations: Record<string, { en: string; bn: string }> = {
     en: 'Format 4: Departmental Comparative Matrix',
     bn: 'ফরম্যাট ৪: বিভাগীয় সামগ্রিক পারফরম্যান্স টেবিল',
   },
+  orientationLandscape: {
+    en: 'Landscape',
+    bn: 'আড়াআড়ি (ল্যান্ডস্কেপ)',
+  },
+  orientationPortrait: {
+    en: 'Portrait',
+    bn: 'লম্বালম্বি (পোর্ট্রেট)',
+  },
+  resetToDefaultTemplate: {
+    en: 'Reset to Default Template',
+    bn: 'ডিফল্ট জেডি সূচকে রিসেট করুন',
+  },
+  confirmDeleteIndicator: {
+    en: 'Delete KPI Indicator',
+    bn: 'কেপিআই সূচক অপসারণ',
+  },
+  changeLogo: {
+    en: 'Change Logo',
+    bn: 'সংস্থার লোগো পরিবর্তন',
+  },
+  autoLoginEnabled: {
+    en: 'Auto Login Enabled',
+    bn: 'অটো লগইন সক্রিয়',
+  },
 };
 
 const LanguageContext = createContext<LanguageContextType | undefined>(undefined);

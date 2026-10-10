@@ -138,7 +138,7 @@ export const PrintableReportModal: React.FC<PrintableReportModalProps> = ({
   const displayRatingColor = aggregatedPerf ? aggregatedPerf.ratingColor : kpi.ratingColor;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-950/75 backdrop-blur-xs overflow-y-auto print:static print:inset-auto print:p-0 print:m-0 print:bg-white print:overflow-visible print:block print:h-auto print:w-full">
+    <div className="fixed inset-0 z-50 flex items-start justify-center p-2 sm:p-4 pt-16 pb-16 bg-slate-950/75 backdrop-blur-xs overflow-y-auto print:static print:inset-auto print:p-0 print:m-0 print:bg-white print:overflow-visible print:block print:h-auto print:w-full">
       {/* Top Floating Control Bar (Strictly Hidden during Print) */}
       <div className="fixed top-3 inset-x-4 sm:inset-x-auto sm:right-4 z-50 flex flex-wrap items-center justify-between sm:justify-end gap-2 print:hidden bg-slate-900/95 backdrop-blur-md p-2.5 rounded-2xl shadow-2xl border border-slate-700">
         {/* Quick Staff Switcher (ONLY for Forhad, Kanta, HR) */}

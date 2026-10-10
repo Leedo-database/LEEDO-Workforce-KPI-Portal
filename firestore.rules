@@ -1,0 +1,44 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper function for valid document IDs
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128;
+    }
+
+    // App configurations and branding
+    match /system_config/{configId} {
+      allow read, write: if isValidId(configId);
+    }
+
+    // Staff roster
+    match /employees/{eid} {
+      allow read, write: if isValidId(eid);
+    }
+
+    // Credentials for staff auth
+    match /user_credentials/{eid} {
+      allow read, write: if isValidId(eid);
+    }
+
+    // KPI performance records
+    match /kpi_records/{recordId} {
+      allow read, write: if isValidId(recordId);
+    }
+
+    // Staff Job Descriptions
+    match /employee_jds/{eid} {
+      allow read, write: if isValidId(eid);
+    }
+
+    // Audit logs
+    match /audit_logs/{logId} {
+      allow read, write: if isValidId(logId);
+    }
+
+    // Test connection doc
+    match /test/{testId} {
+      allow read, write: if isValidId(testId);
+    }
+  }
+}

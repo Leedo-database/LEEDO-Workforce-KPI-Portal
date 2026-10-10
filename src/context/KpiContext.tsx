@@ -19,6 +19,13 @@ import { generateInitialKPIs, INITIAL_AUDIT_LOGS } from '../data/initialKpis';
 import { calculateKPIScores } from '../utils/kpiCalculator';
 import { getJDTemplateForDesignation } from '../data/jobDescriptions';
 import { calculateWeightAdjustment } from '../utils/weightAdjuster';
+import {
+  testConnection,
+  syncDocToFirestore,
+  fetchCollectionFromFirestore,
+  fetchDocFromFirestore,
+  deleteDocFromFirestore,
+} from '../lib/firebase';
 
 export interface KpiContextType {
   currentUser: Employee | null;
@@ -71,7 +78,8 @@ export interface KpiContextType {
 
   commitMonthlyTargets: (
     eid: string,
-    targetValues: { [taskId: string]: number }
+    targetValues: { [taskId: string]: number },
+    monthCode?: string
   ) => { success: boolean; message: string };
 
   addCustomKpi: (
@@ -84,7 +92,8 @@ export interface KpiContextType {
       weight: number;
       strategicPillar: StrategicPillar;
       autoAdjustOthers?: boolean;
-    }
+    },
+    monthCode?: string
   ) => { success: boolean; message: string; adjustedInfo?: string };
 
   addMainKpiItem: (
@@ -96,18 +105,31 @@ export interface KpiContextType {
       unit: string;
       weight: number;
       strategicPillar: StrategicPillar;
-    }
+    },
+    monthCode?: string
   ) => { success: boolean; message: string };
 
   modifyEmployeeKpiItem: (
     eid: string,
     taskId: string,
-    updates: Partial<KPIItem>
+    updates: Partial<KPIItem>,
+    monthCode?: string
   ) => { success: boolean; message: string };
 
   deleteEmployeeKpiItem: (
     eid: string,
-    taskId: string
+    taskId: string,
+    monthCode?: string
+  ) => { success: boolean; message: string };
+
+  deleteEmployeeMonthKPI: (
+    eid: string,
+    monthCode: string
+  ) => { success: boolean; message: string };
+
+  resetEmployeeKpiToDefault: (
+    eid: string,
+    monthCode: string
   ) => { success: boolean; message: string };
 
   addProgressUpdate: (
@@ -117,14 +139,16 @@ export interface KpiContextType {
     updateType: 'daily' | 'weekly',
     summary: string,
     challenges?: string,
-    attachments?: ProofAttachment[]
+    attachments?: ProofAttachment[],
+    monthCode?: string
   ) => { success: boolean; message: string };
 
   hrUpdateEmployeeKPI: (
     targetEid: string,
     updatedItems: { taskId: string; target: number; achieved: number }[],
     hrComments: string,
-    status: 'Draft' | 'Approved'
+    status: 'Draft' | 'Approved',
+    monthCode?: string
   ) => { success: boolean; message: string };
 
   hrUnlockTargetWindowForEmployee: (
@@ -235,18 +259,43 @@ export const KpiProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return {};
   });
 
-  // 4. Logged-in session: Always require explicit login on startup - no ID pre-logged in
+  // 4. Logged-in session: Keep logged-in session across page reloads & link clicks
   const [currentUser, setCurrentUser] = useState<Employee | null>(() => {
     try {
-      localStorage.removeItem(STORAGE_KEY_SESSION);
-      sessionStorage.removeItem(STORAGE_KEY_SESSION);
+      const savedEid = localStorage.getItem(STORAGE_KEY_SESSION) || sessionStorage.getItem(STORAGE_KEY_SESSION);
+      if (savedEid) {
+        const savedEmpData = localStorage.getItem(STORAGE_KEY_EMPLOYEES);
+        const empList: Employee[] = savedEmpData ? JSON.parse(savedEmpData) : EMPLOYEES;
+        const found = empList.find((e) => e.eid === savedEid) || EMPLOYEES.find((e) => e.eid === savedEid);
+        if (found) {
+          return found;
+        }
+      }
     } catch (e) {
       console.error(e);
     }
     return null;
   });
 
-  const [mustChangePassword, setMustChangePassword] = useState<boolean>(false);
+  const [mustChangePassword, setMustChangePassword] = useState<boolean>(() => {
+    try {
+      const savedEid = localStorage.getItem(STORAGE_KEY_SESSION) || sessionStorage.getItem(STORAGE_KEY_SESSION);
+      if (savedEid) {
+        const savedCreds = localStorage.getItem(STORAGE_KEY_CREDS);
+        if (savedCreds) {
+          const credsMap = JSON.parse(savedCreds);
+          const cred = credsMap[savedEid];
+          if (cred) {
+            return Boolean(cred.mustChangePassword || !cred.passwordHash || cred.passwordHash === savedEid);
+          }
+        }
+        return false;
+      }
+    } catch (e) {
+      console.error(e);
+    }
+    return false;
+  });
 
   // 5. Available months
   const [availableMonths, setAvailableMonths] = useState<{ code: string; name: string }[]>(() => {
@@ -310,26 +359,72 @@ export const KpiProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const [autoRolledOverNotice, setAutoRolledOverNotice] = useState<string | null>(null);
 
-  // Sync to local storage
+  // Sync to local storage & session
+  useEffect(() => {
+    if (currentUser) {
+      localStorage.setItem(STORAGE_KEY_SESSION, currentUser.eid);
+      sessionStorage.setItem(STORAGE_KEY_SESSION, currentUser.eid);
+    } else {
+      localStorage.removeItem(STORAGE_KEY_SESSION);
+      sessionStorage.removeItem(STORAGE_KEY_SESSION);
+    }
+  }, [currentUser]);
+
+  // Initial Cloud Firestore Connection & Synchronization
+  useEffect(() => {
+    testConnection();
+
+    const syncCloudData = async () => {
+      try {
+        const [cloudConfig, cloudKpis, cloudCreds, cloudJds, cloudEmps] = await Promise.all([
+          fetchDocFromFirestore<SystemConfig>('system_config', 'app_config'),
+          fetchCollectionFromFirestore<MonthlyEmployeeKPI>('kpi_records'),
+          fetchCollectionFromFirestore<UserCredential>('user_credentials'),
+          fetchCollectionFromFirestore<EmployeeJD>('employee_jds'),
+          fetchCollectionFromFirestore<Employee>('employees'),
+        ]);
+
+        if (cloudConfig) {
+          setSystemConfig((prev) => ({ ...prev, ...cloudConfig }));
+        }
+        if (cloudKpis && cloudKpis.length > 0) {
+          setKpiRecords(cloudKpis);
+        }
+        if (cloudCreds && cloudCreds.length > 0) {
+          const credsMap: Record<string, UserCredential> = {};
+          cloudCreds.forEach((c) => { credsMap[c.eid] = c; });
+          setUserCredentials((prev) => ({ ...prev, ...credsMap }));
+        }
+        if (cloudJds && cloudJds.length > 0) {
+          const jdsMap: Record<string, EmployeeJD> = {};
+          cloudJds.forEach((j) => { jdsMap[j.eid] = j; });
+          setEmployeeJds((prev) => ({ ...prev, ...jdsMap }));
+        }
+        if (cloudEmps && cloudEmps.length > 0) {
+          setEmployees(cloudEmps);
+        }
+      } catch (err) {
+        console.warn('[Firebase] Initial sync note:', err);
+      }
+    };
+
+    syncCloudData();
+  }, []);
+
+  // Sync to local storage & Firestore
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY_EMPLOYEES, JSON.stringify(employees));
+    employees.forEach((emp) => syncDocToFirestore('employees', emp.eid, emp));
   }, [employees]);
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY_JDS, JSON.stringify(employeeJds));
+    Object.values(employeeJds).forEach((jd) => syncDocToFirestore('employee_jds', jd.eid, jd));
   }, [employeeJds]);
 
   useEffect(() => {
-    if (currentUser) {
-      sessionStorage.setItem(STORAGE_KEY_SESSION, currentUser.eid);
-    } else {
-      sessionStorage.removeItem(STORAGE_KEY_SESSION);
-      localStorage.removeItem(STORAGE_KEY_SESSION);
-    }
-  }, [currentUser]);
-
-  useEffect(() => {
     localStorage.setItem(STORAGE_KEY_CONFIG, JSON.stringify(systemConfig));
+    syncDocToFirestore('system_config', 'app_config', systemConfig);
   }, [systemConfig]);
 
   useEffect(() => {
@@ -346,6 +441,7 @@ export const KpiProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY_CREDS, JSON.stringify(userCredentials));
+    Object.values(userCredentials).forEach((c) => syncDocToFirestore('user_credentials', c.eid, c));
   }, [userCredentials]);
 
   // Helper for Audit Logging
@@ -779,7 +875,8 @@ export const KpiProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const commitMonthlyTargets = (
     eid: string,
-    targetValues: { [taskId: string]: number }
+    targetValues: { [taskId: string]: number },
+    monthCode?: string
   ): { success: boolean; message: string } => {
     const emp = getEmployee(eid);
     if (!emp) return { success: false, message: 'কর্মী খুঁজে পাওয়া যায়নি।' };
@@ -792,7 +889,8 @@ export const KpiProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       };
     }
 
-    const currentRecord = getUserKPI(eid);
+    const targetMonth = monthCode || systemConfig.activeMonthCode;
+    const currentRecord = getUserKPI(eid, targetMonth);
     if (!currentRecord) return { success: false, message: 'KPI রেকর্ড খুঁজে পাওয়া যায়নি।' };
 
     const updatedBaseItems = currentRecord.items.map((item) => {
@@ -806,29 +904,32 @@ export const KpiProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const calculated = calculateKPIScores(updatedBaseItems, emp.designation);
     const now = new Date().toISOString();
 
-    setKpiRecords((prev) =>
-      prev.map((rec) => {
-        if (rec.eid === eid && rec.month === systemConfig.activeMonthCode) {
-          return {
-            ...rec,
-            items: calculated.items,
-            finalScore: calculated.finalScore,
-            ratingLabel: calculated.ratingLabel,
-            ratingColor: calculated.ratingColor,
-            automatedRecommendations: calculated.automatedRecommendations,
-            targetCommittedAt: now,
-            isTargetLocked: true,
-            hrTargetUnlocked: false,
-            lastUpdatedAt: now,
-          };
-        }
-        return rec;
-      })
-    );
+    const updatedRecord: MonthlyEmployeeKPI = {
+      ...currentRecord,
+      items: calculated.items,
+      finalScore: calculated.finalScore,
+      ratingLabel: calculated.ratingLabel,
+      ratingColor: calculated.ratingColor,
+      automatedRecommendations: calculated.automatedRecommendations,
+      targetCommittedAt: now,
+      isTargetLocked: true,
+      hrTargetUnlocked: false,
+      lastUpdatedAt: now,
+    };
+
+    setKpiRecords((prev) => {
+      const exists = prev.some((rec) => rec.eid === eid && rec.month === targetMonth);
+      if (exists) {
+        return prev.map((rec) => (rec.eid === eid && rec.month === targetMonth ? updatedRecord : rec));
+      }
+      return [...prev, updatedRecord];
+    });
+
+    syncDocToFirestore('kpi_records', updatedRecord.id, updatedRecord);
 
     addAuditLog(
       'TARGET_COMMITTED',
-      `${systemConfig.activeMonth}-এর জন্য মাসিক টার্গেট চূড়ান্ত ও লক করা হয়েছে।`,
+      `${targetMonth}-এর জন্য মাসিক টার্গেট চূড়ান্ত ও লক করা হয়েছে (${emp.name})।`,
       emp.eid,
       emp.name
     );
@@ -925,12 +1026,14 @@ export const KpiProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       unit: string;
       weight: number;
       strategicPillar: StrategicPillar;
-    }
+    },
+    monthCode?: string
   ): { success: boolean; message: string } => {
     const emp = getEmployee(eid);
     if (!emp) return { success: false, message: 'কর্মী খুঁজে পাওয়া যায়নি।' };
 
-    const currentRecord = getUserKPI(eid);
+    const targetMonth = monthCode || systemConfig.activeMonthCode;
+    const currentRecord = getUserKPI(eid, targetMonth);
     if (!currentRecord) return { success: false, message: 'KPI রেকর্ড খুঁজে পাওয়া যায়নি।' };
 
     const targetWeight = Math.max(5, mainKpiData.weight);
@@ -958,26 +1061,29 @@ export const KpiProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const calculated = calculateKPIScores(finalItems, emp.designation);
     const now = new Date().toISOString();
 
-    setKpiRecords((prev) =>
-      prev.map((rec) => {
-        if (rec.eid === eid && rec.month === systemConfig.activeMonthCode) {
-          return {
-            ...rec,
-            items: calculated.items,
-            finalScore: calculated.finalScore,
-            ratingLabel: calculated.ratingLabel,
-            ratingColor: calculated.ratingColor,
-            automatedRecommendations: calculated.automatedRecommendations,
-            lastUpdatedAt: now,
-          };
-        }
-        return rec;
-      })
-    );
+    const updatedRecord: MonthlyEmployeeKPI = {
+      ...currentRecord,
+      items: calculated.items,
+      finalScore: calculated.finalScore,
+      ratingLabel: calculated.ratingLabel,
+      ratingColor: calculated.ratingColor,
+      automatedRecommendations: calculated.automatedRecommendations,
+      lastUpdatedAt: now,
+    };
+
+    setKpiRecords((prev) => {
+      const exists = prev.some((rec) => rec.eid === eid && rec.month === targetMonth);
+      if (exists) {
+        return prev.map((rec) => (rec.eid === eid && rec.month === targetMonth ? updatedRecord : rec));
+      }
+      return [...prev, updatedRecord];
+    });
+
+    syncDocToFirestore('kpi_records', updatedRecord.id, updatedRecord);
 
     addAuditLog(
       'MAIN_KPI_ADDED',
-      `এইচআর কর্তৃক নতুন মূল কেপিআই সংযোজন: "${mainKpiData.title}" (${targetWeight}% ওয়েট). ${adjResult.deductionSummary}`,
+      `এইচআর কর্তৃক নতুন মূল কেপিআই সংযোজন (${targetMonth}): "${mainKpiData.title}" (${targetWeight}% ওয়েট). ${adjResult.deductionSummary}`,
       emp.eid,
       emp.name
     );
@@ -992,12 +1098,14 @@ export const KpiProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const modifyEmployeeKpiItem = (
     eid: string,
     taskId: string,
-    updates: Partial<KPIItem>
+    updates: Partial<KPIItem>,
+    monthCode?: string
   ): { success: boolean; message: string } => {
     const emp = getEmployee(eid);
     if (!emp) return { success: false, message: 'কর্মী খুঁজে পাওয়া যায়নি।' };
 
-    const currentRecord = getUserKPI(eid);
+    const targetMonth = monthCode || systemConfig.activeMonthCode;
+    const currentRecord = getUserKPI(eid, targetMonth);
     if (!currentRecord) return { success: false, message: 'KPI রেকর্ড খুঁজে পাওয়া যায়নি।' };
 
     const existingItem = currentRecord.items.find((it) => it.taskId === taskId);
@@ -1032,26 +1140,29 @@ export const KpiProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const calculated = calculateKPIScores(updatedItems, emp.designation);
     const now = new Date().toISOString();
 
-    setKpiRecords((prev) =>
-      prev.map((rec) => {
-        if (rec.eid === eid && rec.month === systemConfig.activeMonthCode) {
-          return {
-            ...rec,
-            items: calculated.items,
-            finalScore: calculated.finalScore,
-            ratingLabel: calculated.ratingLabel,
-            ratingColor: calculated.ratingColor,
-            automatedRecommendations: calculated.automatedRecommendations,
-            lastUpdatedAt: now,
-          };
-        }
-        return rec;
-      })
-    );
+    const updatedRecord: MonthlyEmployeeKPI = {
+      ...currentRecord,
+      items: calculated.items,
+      finalScore: calculated.finalScore,
+      ratingLabel: calculated.ratingLabel,
+      ratingColor: calculated.ratingColor,
+      automatedRecommendations: calculated.automatedRecommendations,
+      lastUpdatedAt: now,
+    };
+
+    setKpiRecords((prev) => {
+      const exists = prev.some((rec) => rec.eid === eid && rec.month === targetMonth);
+      if (exists) {
+        return prev.map((rec) => (rec.eid === eid && rec.month === targetMonth ? updatedRecord : rec));
+      }
+      return [...prev, updatedRecord];
+    });
+
+    syncDocToFirestore('kpi_records', updatedRecord.id, updatedRecord);
 
     addAuditLog(
       'KPI_MODIFIED',
-      `এইচআর কর্তৃক কেপিআই সংশোধন: "${existingItem.title}" (${emp.name})`,
+      `এইচআর কর্তৃক কেপিআই সংশোধন (${targetMonth}): "${existingItem.title}" (${emp.name})`,
       emp.eid,
       emp.name
     );
@@ -1062,12 +1173,14 @@ export const KpiProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Delete a KPI and redistribute its weight to remaining items
   const deleteEmployeeKpiItem = (
     eid: string,
-    taskId: string
+    taskId: string,
+    monthCode?: string
   ): { success: boolean; message: string } => {
     const emp = getEmployee(eid);
     if (!emp) return { success: false, message: 'কর্মী খুঁজে পাওয়া যায়নি।' };
 
-    const currentRecord = getUserKPI(eid);
+    const targetMonth = monthCode || systemConfig.activeMonthCode;
+    const currentRecord = getUserKPI(eid, targetMonth);
     if (!currentRecord) return { success: false, message: 'KPI রেকর্ড খুঁজে পাওয়া যায়নি।' };
 
     const itemToDelete = currentRecord.items.find((it) => it.taskId === taskId);
@@ -1075,7 +1188,7 @@ export const KpiProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const remaining = currentRecord.items.filter((it) => it.taskId !== taskId);
     if (remaining.length === 0) {
-      return { success: false, message: 'সর্বশেষ কেপিআইটি মুছে ফেলা সম্ভব নয়।' };
+      return { success: false, message: 'সর্বশেষ কেপিআইটি মুছে ফেলা সম্ভব নয়। অন্তত ১টি সূচক থাকা আবশ্যক।' };
     }
 
     // Distribute deleted item's weight equally to remaining items
@@ -1092,31 +1205,119 @@ export const KpiProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const calculated = calculateKPIScores(redistributed, emp.designation);
     const now = new Date().toISOString();
 
-    setKpiRecords((prev) =>
-      prev.map((rec) => {
-        if (rec.eid === eid && rec.month === systemConfig.activeMonthCode) {
-          return {
-            ...rec,
-            items: calculated.items,
-            finalScore: calculated.finalScore,
-            ratingLabel: calculated.ratingLabel,
-            ratingColor: calculated.ratingColor,
-            automatedRecommendations: calculated.automatedRecommendations,
-            lastUpdatedAt: now,
-          };
-        }
-        return rec;
-      })
-    );
+    const updatedRecord: MonthlyEmployeeKPI = {
+      ...currentRecord,
+      items: calculated.items,
+      finalScore: calculated.finalScore,
+      ratingLabel: calculated.ratingLabel,
+      ratingColor: calculated.ratingColor,
+      automatedRecommendations: calculated.automatedRecommendations,
+      lastUpdatedAt: now,
+    };
+
+    setKpiRecords((prev) => {
+      const exists = prev.some((rec) => rec.eid === eid && rec.month === targetMonth);
+      if (exists) {
+        return prev.map((rec) => (rec.eid === eid && rec.month === targetMonth ? updatedRecord : rec));
+      }
+      return [...prev, updatedRecord];
+    });
+
+    syncDocToFirestore('kpi_records', updatedRecord.id, updatedRecord);
 
     addAuditLog(
       'KPI_DELETED',
-      `কেপিআই অপসারিত: "${itemToDelete.title}". অপসারিত ওয়েট (${itemToDelete.weight}%) অবশিষ্ট সূচকে পুনর্বণ্টন করা হয়েছে।`,
+      `কেপিআই অপসারিত (${targetMonth}): "${itemToDelete.title}". অপসারিত ওয়েট (${itemToDelete.weight}%) অবশিষ্ট সূচকে পুনর্বণ্টন করা হয়েছে।`,
       emp.eid,
       emp.name
     );
 
-    return { success: true, message: `কেপিআই সফলভাবে অপসারিত হয়েছে এবং ${itemToDelete.weight}% ওয়েট অবশিষ্ট সূচকে পুনর্বণ্টন করা হয়েছে।` };
+    return {
+      success: true,
+      message: `"${itemToDelete.title}" সফলভাবে অপসারিত হয়েছে এবং ${itemToDelete.weight}% ওয়েট অবশিষ্ট সূচকে পুনর্বণ্টন করা হয়েছে।`,
+    };
+  };
+
+  // Delete an entire month's KPI record for an employee
+  const deleteEmployeeMonthKPI = (
+    eid: string,
+    monthCode: string
+  ): { success: boolean; message: string } => {
+    const emp = getEmployee(eid);
+    if (!emp) return { success: false, message: 'কর্মী খুঁজে পাওয়া যায়নি।' };
+
+    const recordId = `${eid}-${monthCode}`;
+    setKpiRecords((prev) => prev.filter((r) => !(r.eid === eid && r.month === monthCode)));
+    deleteDocFromFirestore('kpi_records', recordId);
+
+    addAuditLog(
+      'KPI_DELETED',
+      `এইচআর কর্তৃক সম্পূর্ণ মাসের (${monthCode}) কেপিআই রেকর্ড অপসারিত: ${emp.name} (${eid})`,
+      emp.eid,
+      emp.name
+    );
+
+    return {
+      success: true,
+      message: `${emp.name}-এর ${monthCode} মাসের কেপিআই রেকর্ড সফলভাবে মুছে ফেলা হয়েছে।`,
+    };
+  };
+
+  // Reset an employee's month KPI to original default JD template
+  const resetEmployeeKpiToDefault = (
+    eid: string,
+    monthCode: string
+  ): { success: boolean; message: string } => {
+    const emp = getEmployee(eid);
+    if (!emp) return { success: false, message: 'কর্মী খুঁজে পাওয়া যায়নি।' };
+
+    const templates = getJDTemplateForDesignation(emp.designation);
+    const blankItems = templates.map((tmpl) => ({
+      taskId: tmpl.id,
+      title: tmpl.title,
+      description: tmpl.description,
+      weight: tmpl.weight,
+      target: tmpl.defaultTarget,
+      achieved: 0,
+      unit: tmpl.unit,
+      strategicPillar: tmpl.strategicPillar,
+      achievementRate: 0,
+      weightedScore: 0,
+      guidanceNotes: tmpl.guidanceNotes,
+    }));
+    const calculated = calculateKPIScores(blankItems, emp.designation);
+    const newRecord: MonthlyEmployeeKPI = {
+      id: `${eid}-${monthCode}`,
+      eid,
+      month: monthCode,
+      isTargetLocked: false,
+      items: calculated.items,
+      updates: [],
+      finalScore: calculated.finalScore,
+      ratingLabel: calculated.ratingLabel,
+      ratingColor: calculated.ratingColor,
+      automatedRecommendations: calculated.automatedRecommendations,
+      lastUpdatedAt: new Date().toISOString(),
+    };
+
+    setKpiRecords((prev) => {
+      const filtered = prev.filter((r) => !(r.eid === eid && r.month === monthCode));
+      return [...filtered, newRecord];
+    });
+
+    syncDocToFirestore('kpi_records', newRecord.id, newRecord);
+
+    addAuditLog(
+      'KPI_MODIFIED',
+      `এইচআর কর্তৃক ${monthCode} মাসের কেপিআই ডিফল্ট জেডি টেমপ্লেটে রিসেট করা হয়েছে: ${emp.name}`,
+      emp.eid,
+      emp.name
+    );
+
+    return {
+      success: true,
+      message: `${emp.name}-এর ${monthCode} মাসের কেপিআই ডিফল্ট সূচকে রিসেট করা হয়েছে।`,
+    };
   };
 
   // Progress Update with Optional Proof Attachment
@@ -1127,12 +1328,14 @@ export const KpiProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     updateType: 'daily' | 'weekly',
     summary: string,
     challenges?: string,
-    attachments?: ProofAttachment[]
+    attachments?: ProofAttachment[],
+    monthCode?: string
   ): { success: boolean; message: string } => {
     const emp = getEmployee(eid);
     if (!emp) return { success: false, message: 'কর্মী খুঁজে পাওয়া যায়নি।' };
 
-    const currentRecord = getUserKPI(eid);
+    const targetMonth = monthCode || systemConfig.activeMonthCode;
+    const currentRecord = getUserKPI(eid, targetMonth);
     if (!currentRecord) return { success: false, message: 'KPI রেকর্ড খুঁজে পাওয়া যায়নি।' };
 
     const targetItem = currentRecord.items.find((item) => item.taskId === taskId);
@@ -1168,23 +1371,26 @@ export const KpiProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const calculated = calculateKPIScores(updatedItems, emp.designation);
 
-    setKpiRecords((prev) =>
-      prev.map((rec) => {
-        if (rec.eid === eid && rec.month === systemConfig.activeMonthCode) {
-          return {
-            ...rec,
-            items: calculated.items,
-            updates: [newUpdate, ...rec.updates],
-            finalScore: calculated.finalScore,
-            ratingLabel: calculated.ratingLabel,
-            ratingColor: calculated.ratingColor,
-            automatedRecommendations: calculated.automatedRecommendations,
-            lastUpdatedAt: now,
-          };
-        }
-        return rec;
-      })
-    );
+    const updatedRecord: MonthlyEmployeeKPI = {
+      ...currentRecord,
+      items: calculated.items,
+      updates: [newUpdate, ...currentRecord.updates],
+      finalScore: calculated.finalScore,
+      ratingLabel: calculated.ratingLabel,
+      ratingColor: calculated.ratingColor,
+      automatedRecommendations: calculated.automatedRecommendations,
+      lastUpdatedAt: now,
+    };
+
+    setKpiRecords((prev) => {
+      const exists = prev.some((rec) => rec.eid === eid && rec.month === targetMonth);
+      if (exists) {
+        return prev.map((rec) => (rec.eid === eid && rec.month === targetMonth ? updatedRecord : rec));
+      }
+      return [...prev, updatedRecord];
+    });
+
+    syncDocToFirestore('kpi_records', updatedRecord.id, updatedRecord);
 
     addAuditLog(
       'PROGRESS_UPDATE',
@@ -1204,12 +1410,14 @@ export const KpiProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     targetEid: string,
     updatedItems: { taskId: string; target: number; achieved: number }[],
     hrComments: string,
-    status: 'Draft' | 'Approved'
+    status: 'Draft' | 'Approved',
+    monthCode?: string
   ): { success: boolean; message: string } => {
     const emp = getEmployee(targetEid);
     if (!emp) return { success: false, message: 'কর্মী খুঁজে পাওয়া যায়নি।' };
 
-    const currentRecord = getUserKPI(targetEid);
+    const targetMonth = monthCode || systemConfig.activeMonthCode;
+    const currentRecord = getUserKPI(targetEid, targetMonth);
     if (!currentRecord) return { success: false, message: 'KPI রেকর্ড খুঁজে পাওয়া যায়নি।' };
 
     const itemMap = new Map(updatedItems.map((u) => [u.taskId, u]));
@@ -1237,27 +1445,30 @@ export const KpiProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       status,
     };
 
-    setKpiRecords((prev) =>
-      prev.map((rec) => {
-        if (rec.eid === targetEid && rec.month === systemConfig.activeMonthCode) {
-          return {
-            ...rec,
-            items: calculated.items,
-            finalScore: calculated.finalScore,
-            ratingLabel: calculated.ratingLabel,
-            ratingColor: calculated.ratingColor,
-            automatedRecommendations: calculated.automatedRecommendations,
-            hrReview,
-            lastUpdatedAt: now,
-          };
-        }
-        return rec;
-      })
-    );
+    const updatedRecord: MonthlyEmployeeKPI = {
+      ...currentRecord,
+      items: calculated.items,
+      finalScore: calculated.finalScore,
+      ratingLabel: calculated.ratingLabel,
+      ratingColor: calculated.ratingColor,
+      automatedRecommendations: calculated.automatedRecommendations,
+      hrReview,
+      lastUpdatedAt: now,
+    };
+
+    setKpiRecords((prev) => {
+      const exists = prev.some((rec) => rec.eid === targetEid && rec.month === targetMonth);
+      if (exists) {
+        return prev.map((rec) => (rec.eid === targetEid && rec.month === targetMonth ? updatedRecord : rec));
+      }
+      return [...prev, updatedRecord];
+    });
+
+    syncDocToFirestore('kpi_records', updatedRecord.id, updatedRecord);
 
     addAuditLog(
       'HR_EVALUATION',
-      `এইচআর মূল্যায়ন সম্পন্ন (${status}): স্কোর ${calculated.finalScore}% (${calculated.ratingLabel})`,
+      `এইচআর মূল্যায়ন সম্পন্ন (${status}, ${targetMonth}): স্কোর ${calculated.finalScore}% (${calculated.ratingLabel})`,
       emp.eid,
       emp.name
     );
@@ -1546,6 +1757,8 @@ export const KpiProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       Boolean(cred && cred.mustChangePassword);
 
     setCurrentUser(emp);
+    localStorage.setItem(STORAGE_KEY_SESSION, emp.eid);
+    sessionStorage.setItem(STORAGE_KEY_SESSION, emp.eid);
     setMustChangePassword(needsPassChange);
 
     addAuditLog('USER_LOGIN', `কর্মী সিস্টেমে লগইন করেছেন: ${emp.name} (${emp.designation})`, emp.eid, emp.name);
@@ -1561,6 +1774,8 @@ export const KpiProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (currentUser) {
       addAuditLog('USER_LOGOUT', `কর্মী সিস্টেমে লগআউট করেছেন: ${currentUser.name}`, currentUser.eid, currentUser.name);
     }
+    localStorage.removeItem(STORAGE_KEY_SESSION);
+    sessionStorage.removeItem(STORAGE_KEY_SESSION);
     setCurrentUser(null);
     setMustChangePassword(false);
   };
@@ -1578,17 +1793,22 @@ export const KpiProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return { success: false, message: 'নতুন পাসওয়ার্ড আপনার EID থেকে ভিন্ন ও গোপনীয় হতে হবে।' };
     }
 
+    const updatedCred = {
+      eid,
+      passwordHash: cleanPass,
+      mustChangePassword: false,
+      lastPasswordChangedAt: new Date().toISOString(),
+    };
+
     setUserCredentials((prev) => ({
       ...prev,
-      [eid]: {
-        eid,
-        passwordHash: cleanPass,
-        mustChangePassword: false,
-        lastPasswordChangedAt: new Date().toISOString(),
-      },
+      [eid]: updatedCred,
     }));
+    syncDocToFirestore('user_credentials', eid, updatedCred);
 
     setMustChangePassword(false);
+    localStorage.setItem(STORAGE_KEY_SESSION, eid);
+    sessionStorage.setItem(STORAGE_KEY_SESSION, eid);
     addAuditLog('PASSWORD_CHANGED', `পাসওয়ার্ড সফলভাবে পরিবর্তন করা হয়েছে।`, eid);
 
     return { success: true, message: 'পাসওয়ার্ড সফলভাবে পরিবর্তিত হয়েছে।' };
@@ -1789,6 +2009,8 @@ export const KpiProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         addMainKpiItem,
         modifyEmployeeKpiItem,
         deleteEmployeeKpiItem,
+        deleteEmployeeMonthKPI,
+        resetEmployeeKpiToDefault,
         addProgressUpdate,
         hrUpdateEmployeeKPI,
         hrUnlockTargetWindowForEmployee,

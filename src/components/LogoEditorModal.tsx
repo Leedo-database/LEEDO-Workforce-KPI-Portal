@@ -64,10 +64,10 @@ export const LogoEditorModal: React.FC<LogoEditorModalProps> = ({ isOpen, onClos
       return;
     }
 
-    if (file.size > 3 * 1024 * 1024) {
+    if (file.size > 10 * 1024 * 1024) {
       setAlertMsg({
         type: 'error',
-        text: language === 'bn' ? 'ছবির সাইজ ৩ মেগাবাইটের কম হতে হবে।' : 'Image size must be under 3 MB.',
+        text: language === 'bn' ? 'ছবির সাইজ ১০ মেগাবাইটের কম হতে হবে।' : 'Image size must be under 10 MB.',
       });
       return;
     }
@@ -75,14 +75,50 @@ export const LogoEditorModal: React.FC<LogoEditorModalProps> = ({ isOpen, onClos
     const reader = new FileReader();
     reader.onload = (event) => {
       const dataUrl = event.target?.result as string;
-      if (dataUrl) {
-        setCustomImageUrl(dataUrl);
+      if (!dataUrl) return;
+
+      // Downscale and compress image for optimal performance and Firestore/LocalStorage storage
+      const img = new Image();
+      img.onload = () => {
+        try {
+          const canvas = document.createElement('canvas');
+          const MAX_SIZE = 360;
+          let width = img.width;
+          let height = img.height;
+
+          if (width > height) {
+            if (width > MAX_SIZE) {
+              height = Math.round((height * MAX_SIZE) / width);
+              width = MAX_SIZE;
+            }
+          } else {
+            if (height > MAX_SIZE) {
+              width = Math.round((width * MAX_SIZE) / height);
+              height = MAX_SIZE;
+            }
+          }
+
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.drawImage(img, 0, 0, width, height);
+            const compressedUrl = canvas.toDataURL('image/jpeg', 0.88);
+            setCustomImageUrl(compressedUrl);
+          } else {
+            setCustomImageUrl(dataUrl);
+          }
+        } catch {
+          setCustomImageUrl(dataUrl);
+        }
+
         setLogoType('custom_image');
         setAlertMsg({
           type: 'success',
-          text: language === 'bn' ? 'ছবি সফলভাবে লোড হয়েছে! নিচে প্রিভিউ দেখুন।' : 'Image loaded successfully! See preview below.',
+          text: language === 'bn' ? 'ছবি সফলভাবে লোড ও অপ্টিমাইজ হয়েছে! নিচে প্রিভিউ দেখুন।' : 'Image loaded & optimized successfully! See preview below.',
         });
-      }
+      };
+      img.src = dataUrl;
     };
     reader.readAsDataURL(file);
   };
@@ -128,25 +164,17 @@ export const LogoEditorModal: React.FC<LogoEditorModalProps> = ({ isOpen, onClos
   };
 
   const handleResetDefault = () => {
-    if (
-      window.confirm(
-        language === 'bn'
-          ? 'আপনি কি নিশ্চিত যে অফিসিয়াল LEEDO ভেক্টর লোগোতে ফিরতে চান?'
-          : 'Are you sure you want to restore the default official LEEDO logo?'
-      )
-    ) {
-      resetOrgLogoToDefault();
-      setLogoType('default');
-      setCustomImageUrl('');
-      setOrgNameEn('LEEDO');
-      setOrgNameBn('লিডো');
-      setOrgSubtitleEn('Local Education & Economic Development Org.');
-      setOrgSubtitleBn('স্থানীয় শিক্ষা ও অর্থনৈতিক উন্নয়ন সংস্থা • ঢাকা, বাংলাদেশ');
-      setAlertMsg({
-        type: 'success',
-        text: language === 'bn' ? 'ডিফল্ট লিডো লোগোতে পুনর্বহাল করা হয়েছে।' : 'Restored to default LEEDO logo.',
-      });
-    }
+    resetOrgLogoToDefault();
+    setLogoType('default');
+    setCustomImageUrl('');
+    setOrgNameEn('LEEDO');
+    setOrgNameBn('লিডো');
+    setOrgSubtitleEn('Local Education & Economic Development Org.');
+    setOrgSubtitleBn('স্থানীয় শিক্ষা ও অর্থনৈতিক উন্নয়ন সংস্থা • ঢাকা, বাংলাদেশ');
+    setAlertMsg({
+      type: 'success',
+      text: language === 'bn' ? 'ডিফল্ট লিডো অফিসিয়াল ভেক্টর লোগো পুনর্বহাল করা হয়েছে।' : 'Default official LEEDO logo restored successfully.',
+    });
   };
 
   // Mock temporary preview object for live preview

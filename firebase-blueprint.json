@@ -1,0 +1,120 @@
+{
+  "entities": {
+    "SystemConfig": {
+      "title": "SystemConfig",
+      "description": "Global application configuration and logo settings",
+      "type": "object",
+      "properties": {
+        "activeMonth": { "type": "string" },
+        "activeMonthCode": { "type": "string" },
+        "targetWindowDays": { "type": "number" },
+        "overrideTargetWindowOpen": { "type": "boolean" },
+        "logoConfig": { "type": "object" },
+        "updatedAt": { "type": "string" }
+      }
+    },
+    "Employee": {
+      "title": "Employee",
+      "description": "Staff profile and department assignment",
+      "type": "object",
+      "properties": {
+        "eid": { "type": "string" },
+        "name": { "type": "string" },
+        "designation": { "type": "string" },
+        "department": { "type": "string" },
+        "role": { "type": "string" },
+        "status": { "type": "string" },
+        "joiningDate": { "type": "string" }
+      },
+      "required": ["eid", "name", "designation", "department", "role"]
+    },
+    "UserCredential": {
+      "title": "UserCredential",
+      "description": "User authentication credentials and password status",
+      "type": "object",
+      "properties": {
+        "eid": { "type": "string" },
+        "passwordHash": { "type": "string" },
+        "mustChangePassword": { "type": "boolean" },
+        "lastPasswordChangedAt": { "type": "string" }
+      },
+      "required": ["eid", "passwordHash"]
+    },
+    "MonthlyKPI": {
+      "title": "MonthlyKPI",
+      "description": "Monthly KPI record for a staff member",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "eid": { "type": "string" },
+        "month": { "type": "string" },
+        "isTargetLocked": { "type": "boolean" },
+        "items": { "type": "array" },
+        "updates": { "type": "array" },
+        "finalScore": { "type": "number" },
+        "ratingLabel": { "type": "string" },
+        "ratingColor": { "type": "string" },
+        "lastUpdatedAt": { "type": "string" }
+      },
+      "required": ["id", "eid", "month", "items"]
+    },
+    "EmployeeJD": {
+      "title": "EmployeeJD",
+      "description": "Job description documents and text for employees",
+      "type": "object",
+      "properties": {
+        "eid": { "type": "string" },
+        "designation": { "type": "string" },
+        "textContent": { "type": "string" },
+        "fileName": { "type": "string" },
+        "fileData": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["eid"]
+    },
+    "AuditLog": {
+      "title": "AuditLog",
+      "description": "System event audit trail",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "timestamp": { "type": "string" },
+        "actorEid": { "type": "string" },
+        "actorName": { "type": "string" },
+        "action": { "type": "string" },
+        "details": { "type": "string" }
+      },
+      "required": ["id", "timestamp", "action", "details"]
+    }
+  },
+  "firestore": {
+    "/system_config/{configId}": {
+      "schema": "SystemConfig",
+      "description": "Global application branding and configuration"
+    },
+    "/employees/{eid}": {
+      "schema": "Employee",
+      "description": "Staff roster information"
+    },
+    "/user_credentials/{eid}": {
+      "schema": "UserCredential",
+      "description": "Staff authentication records"
+    },
+    "/kpi_records/{recordId}": {
+      "schema": "MonthlyKPI",
+      "description": "Monthly employee performance records"
+    },
+    "/employee_jds/{eid}": {
+      "schema": "EmployeeJD",
+      "description": "Job description records"
+    },
+    "/audit_logs/{logId}": {
+      "schema": "AuditLog",
+      "description": "Security and activity logs"
+    },
+    "/test/{testId}": {
+      "schema": { "$ref": "#/entities/AuditLog" },
+      "description": "Connection test records"
+    }
+  }
+}
